@@ -1,0 +1,23 @@
+# Environment & Secrets (CRITICAL)
+.env
+*.env
+
+# Python / Backend
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.pdf
+
+# Flutter / Dart
+.dart_tool/
+.idea/
+build/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# OS Junk
+.DS_Store
+Thumbs.db
