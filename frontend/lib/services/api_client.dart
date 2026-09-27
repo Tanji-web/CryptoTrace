@@ -12,9 +12,12 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  // Adjust for your deployment. Kept as a plain constant since this is a
-  // single-file prototype frontend.
-  static const String baseUrl = 'http://localhost:8000';
+  // Override for another machine/deployment, for example:
+  // flutter run --dart-define=API_BASE_URL=http://192.168.1.20:8000
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://localhost:8000',
+  );
 
   static Future<TraceResult> traceWallet(String walletAddress, int maxHops) async {
     final uri = Uri.parse('$baseUrl/api/trace');
@@ -51,7 +54,15 @@ class ApiClient {
     }
   }
 
-  static Uri reportUri(String wallet, int maxHops) {
-    return Uri.parse('$baseUrl/api/report/$wallet?max_hops=$maxHops');
+  static Uri reportUri(String wallet, int maxHops, {String? caseId}) {
+    final query = <String, String>{'max_hops': '$maxHops'};
+    if (caseId != null && caseId.isNotEmpty) query['case_id'] = caseId;
+    return Uri.parse('$baseUrl/api/report/$wallet').replace(queryParameters: query);
+  }
+
+  static Uri caseJsonUri(String wallet, int maxHops, {String? caseId}) {
+    final query = <String, String>{'max_hops': '$maxHops'};
+    if (caseId != null && caseId.isNotEmpty) query['case_id'] = caseId;
+    return Uri.parse('$baseUrl/api/case/$wallet').replace(queryParameters: query);
   }
 }

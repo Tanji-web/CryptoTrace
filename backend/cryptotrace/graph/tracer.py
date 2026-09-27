@@ -6,7 +6,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import networkx as nx
 
-from cryptotrace.config import MAX_GRAPH_NODES, MAX_LIVE_API_CALLS, MIN_TRANSFER_ETH
+from cryptotrace.config import (
+    MAX_CANDIDATES_PER_WALLET,
+    MAX_GRAPH_NODES,
+    MAX_LIVE_API_CALLS,
+    MIN_TRANSFER_ETH,
+)
 from cryptotrace.ingestion.etherscan import fetch_live_for_address, finalize_candidates
 from cryptotrace.ingestion.mock import transactions_for_mock_address
 from cryptotrace.models import TraceOutcome, TransactionCandidate
@@ -21,7 +26,7 @@ def _add_node(graph: nx.MultiDiGraph, address: str, target_address: str) -> None
         is_vasp=vasp is not None,
         vasp_name=vasp["name"] if vasp else None,
         vasp_type=vasp["type"] if vasp else None,
-        vasp_verified=(vasp.get("verified") == "true") if vasp else False,
+        vasp_verified=(vasp.get("verification_status") == "verified") if vasp else False,
         is_target=(address == target_address),
     )
 
@@ -98,6 +103,7 @@ def trace_wallet(target_address: str, max_hops: int = 2) -> TraceOutcome:
                 partial_data = False
             elif fetch.error and current != target_address:
                 api_warnings.extend(fetch.api_warnings)
+                live_failure = True
                 depth_stop_reason = depth_stop_reason or "api_error"
 
         transactions_by_node[current] = fetch.transactions
@@ -170,9 +176,10 @@ def trace_wallet(target_address: str, max_hops: int = 2) -> TraceOutcome:
     if live_failure:
         overall_source = "live_api_error"
 
+    # Unpriced ERC-20 transfers are retained as graph evidence, so they are
+    # informational rather than part of the filtered-count arithmetic.
     filtered = (
         totals["below"]
-        + totals["unpriced_token"]
         + totals["candidate_limit"]
         + totals["non_economic_contract_calls"]
         + totals["other_filtered"]
@@ -183,7 +190,6 @@ def trace_wallet(target_address: str, max_hops: int = 2) -> TraceOutcome:
         )
         filtered = (
             totals["below"]
-            + totals["unpriced_token"]
             + totals["candidate_limit"]
             + totals["non_economic_contract_calls"]
             + totals["other_filtered"]
@@ -206,7 +212,7 @@ def trace_wallet(target_address: str, max_hops: int = 2) -> TraceOutcome:
         "limits": {
             "max_nodes": MAX_GRAPH_NODES,
             "max_api_calls": MAX_LIVE_API_CALLS,
-            "max_candidates_per_wallet": 10,
+            "max_candidates_per_wallet": MAX_CANDIDATES_PER_WALLET,
         },
         "truncated": truncation_reason is not None,
         "truncation_reason": truncation_reason,
@@ -216,16 +222,18 @@ def trace_wallet(target_address: str, max_hops: int = 2) -> TraceOutcome:
     }
 
     from cryptotrace.graph.attribution import find_nearest_vasp
-    nearest_vasp, path = find_nearest_vasp(graph, target_address)
+    nearest_vasp, path, vasp_direction, path_hops = find_nearest_vasp(graph, target_address)
     return TraceOutcome(
-        graph,
-        target_address,
-        overall_source,
-        nearest_vasp,
-        path,
-        max_hops,
-        reached_hops,
-        depth_stop_reason,
-        analysis,
-        transactions_by_node,
+        graph=graph,
+        target_address=target_address,
+        data_source=overall_source,
+        vasp_address=nearest_vasp,
+        path=path,
+        vasp_direction=vasp_direction,
+        path_hops=path_hops,
+        requested_hops=max_hops,
+        reached_hops=reached_hops,
+        depth_stop_reason=depth_stop_reason,
+        analysis=analysis,
+        transactions_by_node=transactions_by_node,
     )

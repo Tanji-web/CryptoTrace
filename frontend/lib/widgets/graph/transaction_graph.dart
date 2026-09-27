@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/trace_models.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
+import '../evidence/transaction_evidence_card.dart';
 
 class GraphSection extends StatelessWidget {
   final TraceResult? result;
@@ -89,6 +90,7 @@ class GraphLegend extends StatelessWidget {
           item(AppColors.targetAmber, 'Target wallet'),
           item(AppColors.wallet, 'Wallet'),
           item(AppColors.vasp, 'Known VASP'),
+          item(AppColors.targetAmber, 'Pattern indicator'),
         ],
       ),
     );
@@ -199,6 +201,12 @@ class TransactionGraphState extends State<TransactionGraph> {
   Widget build(BuildContext context) {
     final nodes = widget.result.nodes;
     final edges = widget.result.edges;
+    final patternNodeIds = widget.result.patterns
+        .expand((pattern) => pattern.nodeIds)
+        .toSet();
+    final patternTxHashes = widget.result.patterns
+        .expand((pattern) => pattern.txHashes)
+        .toSet();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -223,7 +231,11 @@ class TransactionGraphState extends State<TransactionGraph> {
               children: [
                 CustomPaint(
                   size: canvasSize,
-                  painter: EdgePainter(edges: edges, positions: positions),
+                  painter: EdgePainter(
+                    edges: edges,
+                    positions: positions,
+                    patternTxHashes: patternTxHashes,
+                  ),
                 ),
                 for (final node in nodes)
                   if (positions.containsKey(node.id))
@@ -234,6 +246,7 @@ class TransactionGraphState extends State<TransactionGraph> {
                         node: node,
                         radius: nodeRadius,
                         isSelected: node.id == widget.selectedNodeId,
+                        hasPattern: patternNodeIds.contains(node.id),
                         onTap: () => showNodeDetails(context, node),
                       ),
                     ),
@@ -281,6 +294,15 @@ class TransactionGraphState extends State<TransactionGraph> {
                 const SizedBox(height: 4),
                 Text('Type: ${node.vaspType ?? "Unknown"} (VASP)',
                     style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                const SizedBox(height: 3),
+                Text(
+                  'Registry status: ${node.vaspVerified ? "Verified" : "Demo / not independently verified"}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: node.vaspVerified ? AppColors.vasp : AppColors.targetAmber,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
               const Divider(height: 24),
               Text('Transactions (${relatedEdges.length})', style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -295,18 +317,10 @@ class TransactionGraphState extends State<TransactionGraph> {
                     final e = relatedEdges[index];
                     final direction = e.from == node.id ? 'Sent to' : 'Received from';
                     final counterparty = e.from == node.id ? e.to : e.from;
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('$direction ${shorten(counterparty)}',
-                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-                        const SizedBox(height: 2),
-                        Text(edgeLabel(e), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
-                        Text('${e.transactionType} · ${e.timestamp}',
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                        Text('Tx: ${shorten(e.txHash, keep: 10)}',
-                            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontFamily: 'monospace')),
-                      ],
+                    return TransactionEvidenceCard(
+                      edge: e,
+                      directionLabel: direction,
+                      counterparty: counterparty,
                     );
                   },
                 ),
@@ -324,6 +338,7 @@ class GraphNodeWidget extends StatelessWidget {
   final GraphNode node;
   final double radius;
   final bool isSelected;
+  final bool hasPattern;
   final VoidCallback onTap;
 
   const GraphNodeWidget({
@@ -331,6 +346,7 @@ class GraphNodeWidget extends StatelessWidget {
     required this.node,
     required this.radius,
     required this.isSelected,
+    required this.hasPattern,
     required this.onTap,
   });
 
@@ -347,22 +363,50 @@ class GraphNodeWidget extends StatelessWidget {
       onTap: onTap,
       child: Column(
         children: [
-          Container(
-            width: radius * 2,
-            height: radius * 2,
-            decoration: BoxDecoration(
-              color: fillColor,
-              shape: BoxShape.circle,
-              border: Border.all(color: borderColor, width: isSelected ? 3 : 2),
-              boxShadow: isSelected
-                  ? [BoxShadow(color: borderColor.withValues(alpha: 0.35), blurRadius: 8, spreadRadius: 1)]
-                  : [const BoxShadow(color: Color(0x14000000), blurRadius: 3, offset: Offset(0, 1))],
-            ),
-            child: Icon(
-              node.isVasp ? Icons.account_balance_outlined : Icons.account_balance_wallet_outlined,
-              size: 20,
-              color: borderColor,
-            ),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: radius * 2,
+                height: radius * 2,
+                decoration: BoxDecoration(
+                  color: fillColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: borderColor, width: isSelected || hasPattern ? 3 : 2),
+                  boxShadow: [
+                    if (hasPattern)
+                      BoxShadow(
+                        color: AppColors.targetAmber.withValues(alpha: 0.35),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    if (isSelected)
+                      BoxShadow(
+                        color: borderColor.withValues(alpha: 0.35),
+                        blurRadius: 8,
+                        spreadRadius: 1,
+                      ),
+                    if (!hasPattern && !isSelected)
+                      const BoxShadow(color: Color(0x14000000), blurRadius: 3, offset: Offset(0, 1)),
+                  ],
+                ),
+                child: Icon(
+                  node.isVasp ? Icons.account_balance_outlined : Icons.account_balance_wallet_outlined,
+                  size: 20,
+                  color: borderColor,
+                ),
+              ),
+              if (hasPattern)
+                const Positioned(
+                  right: -4,
+                  top: -4,
+                  child: Icon(
+                    Icons.warning_amber_rounded,
+                    size: 15,
+                    color: AppColors.targetAmber,
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 4),
           Container(
@@ -384,8 +428,19 @@ class GraphNodeWidget extends StatelessWidget {
 class EdgePainter extends CustomPainter {
   final List<GraphEdge> edges;
   final Map<String, Offset> positions;
+  final Set<String> patternTxHashes;
 
-  EdgePainter({required this.edges, required this.positions});
+  EdgePainter({
+    required this.edges,
+    required this.positions,
+    required this.patternTxHashes,
+  });
+
+  String _pairKey(String from, String to) {
+    return from.compareTo(to) <= 0 ? '$from|$to' : '$to|$from';
+  }
+
+  String _directionKey(GraphEdge edge) => '${edge.from}|${edge.to}';
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -394,68 +449,98 @@ class EdgePainter extends CustomPainter {
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
 
-    final pairCounts = <String, int>{};
-    final pairSeen = <String, int>{};
+    final pairGroups = <String, List<GraphEdge>>{};
 
     for (final edge in edges) {
-      final pair = '${edge.from}|${edge.to}';
-      pairCounts[pair] = (pairCounts[pair] ?? 0) + 1;
+      pairGroups.putIfAbsent(_pairKey(edge.from, edge.to), () => []).add(edge);
     }
 
-    for (final edge in edges) {
-      final from = positions[edge.from];
-      final to = positions[edge.to];
-      if (from == null || to == null) continue;
+    for (final group in pairGroups.values) {
+      final directionGroups = <String, List<GraphEdge>>{};
+      for (final edge in group) {
+        directionGroups.putIfAbsent(_directionKey(edge), () => []).add(edge);
+      }
 
-      final pair = '${edge.from}|${edge.to}';
-      final index = pairSeen[pair] ?? 0;
-      pairSeen[pair] = index + 1;
-      final count = pairCounts[pair] ?? 1;
+      final directionKeys = directionGroups.keys.toList()..sort();
+      final hasReverseDirections = directionKeys.length > 1;
 
-      final direction = to - from;
-      final length = direction.distance;
-      if (length == 0) continue;
-      final unit = direction / length;
-      final normal = Offset(-unit.dy, unit.dx);
-      final offset = count == 1 ? 0.0 : (index - (count - 1) / 2) * 14.0;
-      final curveFrom = from + normal * offset;
-      final curveTo = to + normal * offset;
+      for (var directionGroupIndex = 0;
+          directionGroupIndex < directionKeys.length;
+          directionGroupIndex++) {
+        final directionEdges = directionGroups[directionKeys[directionGroupIndex]]!;
+        final side = directionGroupIndex == 0 ? -1.0 : 1.0;
 
-      final path = Path()
-        ..moveTo(curveFrom.dx, curveFrom.dy)
-        ..quadraticBezierTo(
-          (curveFrom.dx + curveTo.dx) / 2 + normal.dx * offset,
-          (curveFrom.dy + curveTo.dy) / 2 + normal.dy * offset,
-          curveTo.dx,
-          curveTo.dy,
-        );
-      canvas.drawPath(path, linePaint);
+        for (var index = 0; index < directionEdges.length; index++) {
+          final edge = directionEdges[index];
+          final from = positions[edge.from];
+          final to = positions[edge.to];
+          if (from == null || to == null) continue;
 
-      final arrowTip = curveTo - unit * 30;
-      _drawArrowhead(canvas, arrowTip - unit * 18, arrowTip, linePaint.color);
+          final direction = to - from;
+          final length = direction.distance;
+          if (length == 0) continue;
+          final unit = direction / length;
+          final normal = Offset(-unit.dy, unit.dx);
 
-      final midpoint = Offset(
-        (curveFrom.dx + curveTo.dx) / 2 + normal.dx * offset,
-        (curveFrom.dy + curveTo.dy) / 2 + normal.dy * offset,
-      );
-      final textPainter = TextPainter(
-        text: TextSpan(
-          text: edgeLabel(edge),
-          style: const TextStyle(fontSize: 9, color: AppColors.textSecondary, backgroundColor: AppColors.background),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout(maxWidth: 180);
-      textPainter.paint(canvas, midpoint - Offset(textPainter.width / 2, textPainter.height / 2));
+          final count = directionEdges.length;
+          final centeredOffset = count == 1
+              ? 0.0
+              : (index - (count - 1) / 2) * 14.0;
+          final offset = hasReverseDirections
+              ? side * 22.0 + centeredOffset
+              : centeredOffset;
+
+          final curveFrom = from + normal * offset;
+          final curveTo = to + normal * offset;
+
+          final isPatternEdge = patternTxHashes.contains(edge.txHash);
+          linePaint
+            ..color = isPatternEdge ? AppColors.targetAmber : AppColors.border
+            ..strokeWidth = isPatternEdge ? 2.5 : 1.5;
+
+          final path = Path()
+            ..moveTo(curveFrom.dx, curveFrom.dy)
+            ..quadraticBezierTo(
+              (curveFrom.dx + curveTo.dx) / 2 + normal.dx * offset,
+              (curveFrom.dy + curveTo.dy) / 2 + normal.dy * offset,
+              curveTo.dx,
+              curveTo.dy,
+            );
+          canvas.drawPath(path, linePaint);
+
+          final arrowTip = curveTo - unit * 30;
+          _drawArrowhead(canvas, arrowTip - unit * 18, arrowTip, linePaint.color);
+
+          final midpoint = Offset(
+            (curveFrom.dx + curveTo.dx) / 2 + normal.dx * offset,
+            (curveFrom.dy + curveTo.dy) / 2 + normal.dy * offset,
+          );
+          final textPainter = TextPainter(
+            text: TextSpan(
+              text: edgeLabel(edge),
+              style: TextStyle(
+                fontSize: 9,
+                color: isPatternEdge ? AppColors.targetAmber : AppColors.textSecondary,
+                backgroundColor: AppColors.background,
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          )..layout(maxWidth: 180);
+          textPainter.paint(
+            canvas,
+            midpoint - Offset(textPainter.width / 2, textPainter.height / 2),
+          );
+        }
+      }
     }
   }
 
   void _drawArrowhead(Canvas canvas, Offset from, Offset to, Color color) {
     const arrowSize = 6.0;
-    final direction = (to - from);
+    final direction = to - from;
     final length = direction.distance;
     if (length == 0) return;
     final unit = direction / length;
-    // Stop the arrowhead short of the node circle radius.
     final tip = to - unit * 30;
     final normal = Offset(-unit.dy, unit.dx);
     final p1 = tip - unit * arrowSize + normal * (arrowSize / 2);
@@ -471,6 +556,8 @@ class EdgePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant EdgePainter oldDelegate) {
-    return oldDelegate.edges != edges || oldDelegate.positions != positions;
+    return oldDelegate.edges != edges ||
+        oldDelegate.positions != positions ||
+        oldDelegate.patternTxHashes != patternTxHashes;
   }
 }

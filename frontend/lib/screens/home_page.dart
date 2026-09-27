@@ -26,6 +26,7 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
   String? _selectedNodeId;
   bool _backendOnline = false;
   bool _isExportingPdf = false;
+  bool _isExportingCaseJson = false;
   Timer? _healthTimer;
 
   static final RegExp _addressPattern = RegExp(r'^0x[a-fA-F0-9]{40}$');
@@ -94,7 +95,11 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
     if (_result == null) return;
     setState(() => _isExportingPdf = true);
 
-    final uri = ApiClient.reportUri(_result!.summary.targetWallet, _hopDepth);
+    final uri = ApiClient.reportUri(
+      _result!.summary.targetWallet,
+      _result!.summary.requestedHops,
+      caseId: _result!.caseMetadata.caseId,
+    );
     try {
       final launched = await launchUrl(uri, webOnlyWindowName: '_blank');
       if (!launched) {
@@ -108,6 +113,31 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
       }
     } finally {
       if (mounted) setState(() => _isExportingPdf = false);
+    }
+  }
+
+  Future<void> _exportCaseJson() async {
+    if (_result == null) return;
+    setState(() => _isExportingCaseJson = true);
+
+    final uri = ApiClient.caseJsonUri(
+      _result!.summary.targetWallet,
+      _result!.summary.requestedHops,
+      caseId: _result!.caseMetadata.caseId,
+    );
+    try {
+      final launched = await launchUrl(uri, webOnlyWindowName: '_blank');
+      if (!launched) {
+        throw Exception('launch failed');
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not generate or open the case JSON. Please try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExportingCaseJson = false);
     }
   }
 
@@ -160,7 +190,9 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
                           child: AttributionPanel(
                             result: _result,
                             isExportingPdf: _isExportingPdf,
+                            isExportingCaseJson: _isExportingCaseJson,
                             onExportPdf: _exportPdf,
+                            onExportCaseJson: _exportCaseJson,
                           ),
                         ),
                       ],
@@ -190,7 +222,9 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
                         AttributionPanel(
                           result: _result,
                           isExportingPdf: _isExportingPdf,
+                          isExportingCaseJson: _isExportingCaseJson,
                           onExportPdf: _exportPdf,
+                          onExportCaseJson: _exportCaseJson,
                         ),
                       ],
                     ),

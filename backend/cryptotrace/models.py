@@ -24,10 +24,59 @@ class TraceRequest(BaseModel):
         return value
 
 
+class CaseMetadataModel(BaseModel):
+    case_id: str
+    created_at: str
+    schema_version: str = "1.0"
+
+
+class VaspProvenanceModel(BaseModel):
+    source: str
+    source_type: str
+    source_url: Optional[str] = None
+    verification_status: str
+    last_verified: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ScoreFactorModel(BaseModel):
+    key: str
+    label: str
+    points: int
+    explanation: str
+
+
+class ScoreBreakdownModel(BaseModel):
+    score_type: str
+    base_score: int
+    factors: List[ScoreFactorModel]
+    final_score: int
+
+
+class PatternIndicatorModel(BaseModel):
+    key: str
+    label: str
+    severity: str
+    description: str
+    node_ids: List[str] = Field(default_factory=list)
+    tx_hashes: List[str] = Field(default_factory=list)
+    evidence: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PathHopModel(BaseModel):
+    from_: str = Field(..., alias="from")
+    to: str
+    direction: str
+    outgoing_tx_hashes: List[str] = Field(default_factory=list)
+    incoming_tx_hashes: List[str] = Field(default_factory=list)
+
+
+
 class NodeModel(BaseModel):
     id: str
     label: str
     is_vasp: bool
+    vasp_verified: bool = False
     vasp_name: Optional[str] = None
     vasp_type: Optional[str] = None
     is_target: bool = False
@@ -46,6 +95,7 @@ class EdgeModel(BaseModel):
     token_contract: Optional[str] = None
     token_decimals: Optional[int] = None
     token_raw_amount: Optional[str] = None
+    explorer_url: Optional[str] = None
 
     class Config:
         populate_by_name = True
@@ -77,6 +127,7 @@ class AttributionSummary(BaseModel):
     target_wallet: str
     nearest_vasp: Optional[str]
     vasp_type: Optional[str]
+    vasp_provenance: Optional[VaspProvenanceModel] = None
     hop_count: Optional[int]
     requested_hops: int
     reached_hops: int
@@ -85,7 +136,11 @@ class AttributionSummary(BaseModel):
     risk_score: int
     data_source: str
     path: List[str]
+    vasp_direction: Optional[str] = None
+    path_hops: List[PathHopModel] = Field(default_factory=list)
     scoring_notes: List[str]
+    confidence_breakdown: Optional[ScoreBreakdownModel] = None
+    risk_breakdown: Optional[ScoreBreakdownModel] = None
     disclaimer: str = (
         "This attribution is derived from heuristic graph analysis of transaction proximity. "
         "It does not constitute proof of wallet ownership, control, or identity, and must not "
@@ -94,10 +149,12 @@ class AttributionSummary(BaseModel):
 
 
 class TraceResponse(BaseModel):
+    case: CaseMetadataModel
     nodes: List[NodeModel]
     edges: List[EdgeModel]
     summary: AttributionSummary
     analysis: AnalysisModel
+    patterns: List[PatternIndicatorModel] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):
@@ -143,6 +200,15 @@ class FetchResult:
     api_warnings: List[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class PathHopEvidence:
+    from_address: str
+    to_address: str
+    direction: str
+    outgoing_tx_hashes: List[str] = field(default_factory=list)
+    incoming_tx_hashes: List[str] = field(default_factory=list)
+
+
 @dataclass
 class TraceOutcome:
     graph: nx.MultiDiGraph
@@ -150,6 +216,8 @@ class TraceOutcome:
     data_source: str
     vasp_address: Optional[str]
     path: List[str]
+    vasp_direction: Optional[str]
+    path_hops: List[PathHopEvidence]
     requested_hops: int
     reached_hops: int
     depth_stop_reason: Optional[str]

@@ -6,17 +6,25 @@ import '../../utils/formatters.dart';
 import '../evidence/analysis_summary_card.dart';
 import '../evidence/transaction_path_timeline.dart';
 import 'metric_card.dart';
+import 'pattern_indicators_card.dart';
+import 'score_breakdown_card.dart';
+import 'vasp_provenance_card.dart';
+import 'case_metadata_card.dart';
 
 class AttributionPanel extends StatelessWidget {
   final TraceResult? result;
   final bool isExportingPdf;
+  final bool isExportingCaseJson;
   final VoidCallback onExportPdf;
+  final VoidCallback onExportCaseJson;
 
   const AttributionPanel({
     super.key,
     required this.result,
     required this.isExportingPdf,
+    required this.isExportingCaseJson,
     required this.onExportPdf,
+    required this.onExportCaseJson,
   });
 
   @override
@@ -36,6 +44,7 @@ class AttributionPanel extends StatelessWidget {
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
               )
             else ...[
+              CaseMetadataCard(metadata: result!.caseMetadata),
               MetricCard(
                 title: 'Target Address',
                 value: shorten(result!.summary.targetWallet, keep: 8),
@@ -46,6 +55,17 @@ class AttributionPanel extends StatelessWidget {
                 value: result!.summary.nearestVasp ?? 'None detected',
                 accentColor: result!.summary.nearestVasp != null ? AppColors.vasp : null,
               ),
+              if (result!.summary.nearestVasp != null && result!.summary.vaspProvenance != null)
+                VaspProvenanceCard(
+                  vaspName: result!.summary.nearestVasp!,
+                  provenance: result!.summary.vaspProvenance!,
+                ),
+              if (result!.summary.nearestVasp != null)
+                MetricCard(
+                  title: 'Observed VASP Path Direction',
+                  value: _directionLabel(result!.summary.vaspDirection),
+                  accentColor: _directionColor(result!.summary.vaspDirection),
+                ),
               MetricCard(
                 title: 'Hop Depth',
                 value: 'Requested ${result!.summary.requestedHops} · Reached ${result!.summary.reachedHops}',
@@ -72,6 +92,11 @@ class AttributionPanel extends StatelessWidget {
                 value: result!.summary.dataSource.toUpperCase(),
                 accentColor: result!.summary.dataSource.startsWith('live') ? AppColors.vasp : AppColors.targetAmber,
               ),
+              ScoreBreakdownCard(
+                confidence: result!.summary.confidenceBreakdown,
+                risk: result!.summary.riskBreakdown,
+              ),
+              PatternIndicatorsCard(patterns: result!.patterns),
               const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 8),
@@ -81,25 +106,52 @@ class AttributionPanel extends StatelessWidget {
               const SizedBox(height: 12),
               TransactionPathTimeline(result: result!),
               const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 44,
-                child: OutlinedButton.icon(
-                  onPressed: isExportingPdf ? null : onExportPdf,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.primary,
-                    side: const BorderSide(color: AppColors.primary),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: OutlinedButton.icon(
+                        onPressed: (isExportingPdf || isExportingCaseJson) ? null : onExportPdf,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: isExportingPdf
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.picture_as_pdf_outlined, size: 17),
+                        label: const Text('PDF', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                    ),
                   ),
-                  icon: isExportingPdf
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                  label: const Text('Export Forensic Evidence PDF', style: TextStyle(fontWeight: FontWeight.w600)),
-                ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: OutlinedButton.icon(
+                        onPressed: (isExportingPdf || isExportingCaseJson) ? null : onExportCaseJson,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: const BorderSide(color: AppColors.border),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: isExportingCaseJson
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.data_object_outlined, size: 17),
+                        label: const Text('Case JSON', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               Container(
@@ -116,4 +168,30 @@ class AttributionPanel extends StatelessWidget {
       ),
     );
   }
+
+String _directionLabel(String? direction) {
+  switch (direction) {
+    case 'outbound':
+      return 'Outbound · Target → VASP';
+    case 'inbound':
+      return 'Inbound · VASP → Target';
+    case 'mixed':
+      return 'Mixed directions observed';
+    default:
+      return 'Unknown';
+  }
+}
+
+Color _directionColor(String? direction) {
+  switch (direction) {
+    case 'outbound':
+      return AppColors.vasp;
+    case 'inbound':
+      return AppColors.primary;
+    case 'mixed':
+      return AppColors.targetAmber;
+    default:
+      return AppColors.textSecondary;
+  }
+}
 }

@@ -117,7 +117,7 @@ def _make_erc20_candidate(item: dict) -> Optional[TransactionCandidate]:
 
 
 def _value_and_filter(candidate: TransactionCandidate) -> None:
-    """Apply the direct blockchain-amount qualification rule."""
+    """Apply the ETH threshold to native transfers while retaining ERC-20 structure."""
     if candidate.asset_type in {"native_eth", "internal_eth"}:
         if candidate.amount >= MIN_TRANSFER_ETH:
             candidate.eligible = True
@@ -126,10 +126,11 @@ def _value_and_filter(candidate: TransactionCandidate) -> None:
             candidate.eligible = False
             candidate.filter_reason = "below_eth_threshold"
     elif candidate.asset_type == "erc20":
-        # ERC-20 amounts are intentionally kept as token metadata. Without a
-        # token-to-ETH conversion, they cannot participate in the ETH rule.
-        candidate.eligible = False
-        candidate.filter_reason = "unpriced_token"
+        # ERC-20 transfers are structurally traceable even without token-to-ETH
+        # pricing. The ETH threshold applies only to native/internal ETH.
+        # Their raw token amount/symbol remain metadata rather than USD/ETH value.
+        candidate.eligible = True
+        candidate.filter_reason = "included_unpriced_token"
     else:
         candidate.eligible = False
         candidate.filter_reason = "other_filtered"
@@ -142,7 +143,7 @@ def _value_and_filter(candidate: TransactionCandidate) -> None:
 
 
 def finalize_candidates(candidates: List[TransactionCandidate]) -> FetchResult:
-    """Classify each candidate exactly once, then cap eligible ETH candidates."""
+    """Classify each candidate exactly once, then cap eligible candidates."""
     below = unpriced_token = candidate_limit = contract_calls = other_filtered = 0
     internal_count = erc20_count = 0
 
@@ -163,7 +164,9 @@ def finalize_candidates(candidates: List[TransactionCandidate]) -> FetchResult:
 
         if candidate.filter_reason == "below_eth_threshold":
             below += 1
-        elif candidate.filter_reason == "unpriced_token":
+        elif candidate.filter_reason in {"unpriced_token", "included_unpriced_token"}:
+            # Informational counter: these transfers are unpriced but can still
+            # participate structurally in graph tracing and pattern detection.
             unpriced_token += 1
         elif candidate.filter_reason == "other_filtered":
             other_filtered += 1
