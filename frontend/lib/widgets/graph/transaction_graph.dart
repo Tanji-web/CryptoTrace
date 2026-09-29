@@ -6,12 +6,15 @@ import '../../models/trace_models.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/formatters.dart';
 import '../evidence/transaction_evidence_card.dart';
+import 'graph_filter_panel.dart';
 
-class GraphSection extends StatelessWidget {
+class GraphSection extends StatefulWidget {
   final TraceResult? result;
   final bool isLoading;
   final String? selectedNodeId;
   final ValueChanged<String> onNodeSelected;
+  final VoidCallback? onToggleEvidencePanel;
+  final bool evidencePanelVisible;
 
   const GraphSection({
     super.key,
@@ -19,7 +22,47 @@ class GraphSection extends StatelessWidget {
     required this.isLoading,
     required this.selectedNodeId,
     required this.onNodeSelected,
+    this.onToggleEvidencePanel,
+    this.evidencePanelVisible = true,
   });
+
+  @override
+  State<GraphSection> createState() => _GraphSectionState();
+}
+
+class _GraphSectionState extends State<GraphSection> {
+  GraphFilterState _filter = const GraphFilterState();
+
+  void _onFilterChanged(GraphFilterState next) {
+    setState(() => _filter = next);
+    final result = widget.result;
+    final query = next.searchQuery.trim().toLowerCase();
+    if (result == null || query.isEmpty) return;
+
+    for (final node in result.nodes) {
+      final haystack = '${node.id} ${node.label} ${node.vaspName ?? ''}'.toLowerCase();
+      if (haystack.contains(query)) {
+        widget.onNodeSelected(node.id);
+        return;
+      }
+    }
+
+    for (final edge in result.edges) {
+      final haystack = '${edge.txHash} ${edge.from} ${edge.to} ${edge.assetSymbol ?? ''}'.toLowerCase();
+      if (haystack.contains(query)) {
+        widget.onNodeSelected(edge.from);
+        return;
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant GraphSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.result?.caseMetadata.caseId != widget.result?.caseMetadata.caseId) {
+      _filter = const GraphFilterState();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,9 +71,34 @@ class GraphSection extends StatelessWidget {
       child: Stack(
         children: [
           Positioned.fill(
-            child: isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : result == null
+            child: widget.isLoading
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 14),
+                        Text(
+                          'Tracing wallet and building evidence…',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Please keep this window open while the backend completes the trace.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : widget.result == null
                     ? const Center(
                         child: Text(
                           'Enter a wallet address and click "Trace Wallet" to build the graph.',
@@ -38,16 +106,88 @@ class GraphSection extends StatelessWidget {
                         ),
                       )
                     : TransactionGraph(
-                        result: result!,
-                        selectedNodeId: selectedNodeId,
-                        onNodeSelected: onNodeSelected,
+                        result: widget.result!,
+                        selectedNodeId: widget.selectedNodeId,
+                        onNodeSelected: widget.onNodeSelected,
+                        filter: _filter,
                       ),
           ),
-          if (result != null)
-            Positioned(
+          // Centered investigation toolbar. It floats above the graph so the
+          // graph gets the full vertical canvas and the toolbar remains visually
+          // centered even when the right evidence panel is collapsed.
+          Positioned(
+            top: 10,
+            left: 12,
+            right: 12,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1080),
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: AppColors.surface.withValues(alpha: 0.98),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x14000000),
+                          blurRadius: 10,
+                          offset: Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.result != null)
+                          GraphFilterPanel(
+                            state: _filter,
+                            onChanged: _onFilterChanged,
+                            onReset: () {
+                              setState(() => _filter = const GraphFilterState());
+                            },
+                          ),
+                        if (widget.onToggleEvidencePanel != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                            child: Align(
+                              alignment: Alignment.center,
+                              child: OutlinedButton.icon(
+                                onPressed: widget.onToggleEvidencePanel,
+                                icon: Icon(
+                                  widget.evidencePanelVisible
+                                      ? Icons.keyboard_double_arrow_right_rounded
+                                      : Icons.keyboard_double_arrow_left_rounded,
+                                  size: 17,
+                                ),
+                                label: Text(
+                                  widget.evidencePanelVisible
+                                      ? 'Hide Attribution & Evidence'
+                                      : 'Show Attribution & Evidence',
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppColors.primary,
+                                  side: const BorderSide(color: AppColors.primary),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (widget.result != null)
+            const Positioned(
               left: 16,
               bottom: 16,
-              child: const GraphLegend(),
+              child: GraphLegend(),
             ),
         ],
       ),
@@ -105,12 +245,14 @@ class TransactionGraph extends StatefulWidget {
   final TraceResult result;
   final String? selectedNodeId;
   final ValueChanged<String> onNodeSelected;
+  final GraphFilterState filter;
 
   const TransactionGraph({
     super.key,
     required this.result,
     required this.selectedNodeId,
     required this.onNodeSelected,
+    required this.filter,
   });
 
   @override
@@ -141,11 +283,160 @@ class TransactionGraphState extends State<TransactionGraph> {
 
   static const double nodeRadius = 26;
 
-  Map<String, Offset> _computeLayout(Size availableSize) {
-    final nodes = widget.result.nodes;
-    final edges = widget.result.edges;
-    final target = widget.result.summary.targetWallet;
+  Set<String> _patternTxHashes() {
+    return widget.result.patterns.expand((pattern) => pattern.txHashes).toSet();
+  }
 
+  Set<String> _patternNodeIds() {
+    return widget.result.patterns.expand((pattern) => pattern.nodeIds).toSet();
+  }
+
+  Set<String> _matchedNodeIds() {
+    final query = widget.filter.searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return const <String>{};
+
+    final matches = <String>{};
+    for (final node in widget.result.nodes) {
+      final haystack = '${node.id} ${node.label} ${node.vaspName ?? ''}'.toLowerCase();
+      if (haystack.contains(query)) matches.add(node.id);
+    }
+    for (final edge in widget.result.edges) {
+      final haystack = '${edge.txHash} ${edge.from} ${edge.to} ${edge.assetSymbol ?? ''}'.toLowerCase();
+      if (haystack.contains(query)) {
+        matches.add(edge.from);
+        matches.add(edge.to);
+      }
+    }
+    return matches;
+  }
+
+  bool _edgeMatchesAsset(GraphEdge edge) {
+    switch (widget.filter.assetFilter) {
+      case 'eth':
+        return edge.assetType == 'native_eth' ||
+            edge.assetType == 'internal_eth' ||
+            edge.assetSymbol?.toUpperCase() == 'ETH';
+      case 'erc20':
+        return edge.assetType == 'erc20';
+      case 'contract':
+        return edge.assetType == 'contract_interaction';
+      default:
+        return true;
+    }
+  }
+
+  bool _edgeMatchesDirection(GraphEdge edge) {
+    final target = widget.result.summary.targetWallet;
+    switch (widget.filter.directionFilter) {
+      case 'outgoing':
+        return edge.from == target;
+      case 'incoming':
+        return edge.to == target;
+      default:
+        return true;
+    }
+  }
+
+  List<GraphEdge> _filteredEdges() {
+    final patternTxHashes = _patternTxHashes();
+    final pathTxHashes = widget.result.summary.pathHops
+        .expand((hop) => hop.transactionHashes)
+        .toSet();
+
+    return widget.result.edges.where((edge) {
+      if (!_edgeMatchesAsset(edge)) return false;
+      if (!_edgeMatchesDirection(edge)) return false;
+      if (widget.filter.patternsOnly && !patternTxHashes.contains(edge.txHash)) return false;
+      if (widget.filter.evidenceMode && !pathTxHashes.contains(edge.txHash)) return false;
+      return true;
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allNodes = widget.result.nodes;
+    final patternNodeIds = _patternNodeIds();
+    final patternTxHashes = _patternTxHashes();
+    final matchedNodeIds = _matchedNodeIds();
+    final edges = _filteredEdges();
+    final evidenceNodeIds = <String>{
+      for (final edge in edges) ...[edge.from, edge.to],
+      widget.result.summary.targetWallet,
+    };
+    final nodes = widget.filter.evidenceMode
+        ? allNodes.where((node) => evidenceNodeIds.contains(node.id)).toList()
+        : allNodes;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layoutNodes = nodes.isEmpty ? allNodes : nodes;
+        final layoutEdges = edges;
+        final layoutGraph = TraceResult(
+          caseMetadata: widget.result.caseMetadata,
+          nodes: layoutNodes,
+          edges: layoutEdges,
+          summary: widget.result.summary,
+          analysis: widget.result.analysis,
+          patterns: widget.result.patterns,
+        );
+        final maxLevel = layoutGraph.nodes.isEmpty ? 0 : _estimateMaxLevel(layoutGraph);
+        final canvasWidth = (constraints.maxWidth > 0 ? constraints.maxWidth : 800)
+            .clamp(900, 900 + maxLevel * 230);
+        // Keep enough vertical room for stacked nodes and their labels.
+        // The previous 620px minimum could place the last node partly outside
+        // the canvas when many nodes shared the same level.
+        final canvasHeight = (constraints.maxHeight > 0 ? constraints.maxHeight : 600)
+            .clamp(800, 1100);
+        final canvasSize = Size(canvasWidth.toDouble(), canvasHeight.toDouble());
+        final positions = _computeLayoutFor(layoutGraph, canvasSize);
+
+        return InteractiveViewer(
+          minScale: 0.4,
+          maxScale: 2.5,
+          boundaryMargin: const EdgeInsets.all(200),
+          child: SizedBox(
+            width: canvasSize.width,
+            height: canvasSize.height,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CustomPaint(
+                  size: canvasSize,
+                  painter: EdgePainter(
+                    edges: edges,
+                    positions: positions,
+                    patternTxHashes: patternTxHashes,
+                    evidenceTxHashes: widget.result.summary.pathHops
+                        .expand((hop) => hop.transactionHashes)
+                        .toSet(),
+                  ),
+                ),
+                for (final node in nodes)
+                  if (positions.containsKey(node.id))
+                    Positioned(
+                      left: positions[node.id]!.dx - nodeRadius,
+                      top: positions[node.id]!.dy - nodeRadius,
+                      child: GraphNodeWidget(
+                        node: node,
+                        radius: nodeRadius,
+                        isSelected: node.id == widget.selectedNodeId,
+                        hasPattern: patternNodeIds.contains(node.id),
+                        isSearchMatch: matchedNodeIds.isEmpty || matchedNodeIds.contains(node.id),
+                        onTap: () => showNodeDetails(context, node),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Map<String, Offset> _computeLayoutFor(TraceResult result, Size availableSize) {
+    final nodes = result.nodes;
+    final edges = result.edges;
+    final target = result.summary.targetWallet;
     final adjacency = <String, Set<String>>{for (final n in nodes) n.id: <String>{}};
     for (final e in edges) {
       adjacency[e.from]?.add(e.to);
@@ -178,84 +469,29 @@ class TransactionGraphState extends State<TransactionGraph> {
     }
 
     final maxNodesInLevel = byLevel.values.fold<int>(1, (m, ids) => ids.length > m ? ids.length : m);
-    final dynamicRowSpacing = (availableSize.height / (maxNodesInLevel + 1)).clamp(78.0, 150.0);
+    // Reserve enough room for the node circle, label, and pattern badge so
+    // nodes near the top/bottom of a level never get clipped by the canvas.
+    const verticalPadding = 58.0;
+    final double usableHeight = (availableSize.height - verticalPadding * 2).clamp(0.0, double.infinity);
+    final dynamicRowSpacing = maxNodesInLevel <= 1
+        ? 0.0
+        : (usableHeight / (maxNodesInLevel - 1)).clamp(62.0, 75.0).toDouble();
     final dynamicColumnSpacing = maxNodesInLevel >= 5 ? 260.0 : 230.0;
 
     final positions = <String, Offset>{};
     final sortedLevels = byLevel.keys.toList()..sort();
     for (final level in sortedLevels) {
       final ids = byLevel[level]!..sort();
-      final columnHeight = ids.length * dynamicRowSpacing;
-      final startY = (availableSize.height - columnHeight) / 2 + dynamicRowSpacing / 2;
+      final columnSpan = ids.length <= 1 ? 0.0 : (ids.length - 1) * dynamicRowSpacing;
+      final startY = verticalPadding + (usableHeight - columnSpan) / 2;
       for (var i = 0; i < ids.length; i++) {
         positions[ids[i]] = Offset(
           90 + level * dynamicColumnSpacing,
-          (startY <= 50 ? 50 : startY) + i * dynamicRowSpacing,
+          startY + i * dynamicRowSpacing,
         );
       }
     }
     return positions;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final nodes = widget.result.nodes;
-    final edges = widget.result.edges;
-    final patternNodeIds = widget.result.patterns
-        .expand((pattern) => pattern.nodeIds)
-        .toSet();
-    final patternTxHashes = widget.result.patterns
-        .expand((pattern) => pattern.txHashes)
-        .toSet();
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxLevel = widget.result.nodes.isEmpty
-            ? 0
-            : _estimateMaxLevel(widget.result);
-        final canvasWidth = (constraints.maxWidth > 0 ? constraints.maxWidth : 800)
-            .clamp(900, 900 + maxLevel * 230);
-        final canvasHeight = (constraints.maxHeight > 0 ? constraints.maxHeight : 600)
-            .clamp(620, 1100);
-        final canvasSize = Size(canvasWidth.toDouble(), canvasHeight.toDouble());
-        final positions = _computeLayout(canvasSize);
-
-        return InteractiveViewer(
-          minScale: 0.4,
-          maxScale: 2.5,
-          boundaryMargin: const EdgeInsets.all(200),
-          child: SizedBox(
-            width: canvasSize.width,
-            height: canvasSize.height,
-            child: Stack(
-              children: [
-                CustomPaint(
-                  size: canvasSize,
-                  painter: EdgePainter(
-                    edges: edges,
-                    positions: positions,
-                    patternTxHashes: patternTxHashes,
-                  ),
-                ),
-                for (final node in nodes)
-                  if (positions.containsKey(node.id))
-                    Positioned(
-                      left: positions[node.id]!.dx - nodeRadius,
-                      top: positions[node.id]!.dy - nodeRadius,
-                      child: GraphNodeWidget(
-                        node: node,
-                        radius: nodeRadius,
-                        isSelected: node.id == widget.selectedNodeId,
-                        hasPattern: patternNodeIds.contains(node.id),
-                        onTap: () => showNodeDetails(context, node),
-                      ),
-                    ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
   }
 
   void showNodeDetails(BuildContext context, GraphNode node) {
@@ -339,6 +575,7 @@ class GraphNodeWidget extends StatelessWidget {
   final double radius;
   final bool isSelected;
   final bool hasPattern;
+  final bool isSearchMatch;
   final VoidCallback onTap;
 
   const GraphNodeWidget({
@@ -347,6 +584,7 @@ class GraphNodeWidget extends StatelessWidget {
     required this.radius,
     required this.isSelected,
     required this.hasPattern,
+    required this.isSearchMatch,
     required this.onTap,
   });
 
@@ -359,9 +597,11 @@ class GraphNodeWidget extends StatelessWidget {
             : AppColors.wallet.withValues(alpha: 0.10);
     final Color borderColor = node.isVasp ? AppColors.vasp : (node.isTarget ? AppColors.targetAmber : AppColors.wallet);
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
+    return Opacity(
+      opacity: isSearchMatch ? 1.0 : 0.28,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Column(
         children: [
           Stack(
             clipBehavior: Clip.none,
@@ -418,22 +658,24 @@ class GraphNodeWidget extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }
 }
 
 
-
 class EdgePainter extends CustomPainter {
   final List<GraphEdge> edges;
   final Map<String, Offset> positions;
   final Set<String> patternTxHashes;
+  final Set<String> evidenceTxHashes;
 
   EdgePainter({
     required this.edges,
     required this.positions,
     required this.patternTxHashes,
+    required this.evidenceTxHashes,
   });
 
   String _pairKey(String from, String to) {
@@ -490,37 +732,61 @@ class EdgePainter extends CustomPainter {
               ? side * 22.0 + centeredOffset
               : centeredOffset;
 
-          final curveFrom = from + normal * offset;
-          final curveTo = to + normal * offset;
-
           final isPatternEdge = patternTxHashes.contains(edge.txHash);
+          final isEvidenceEdge = evidenceTxHashes.contains(edge.txHash);
           linePaint
-            ..color = isPatternEdge ? AppColors.targetAmber : AppColors.border
-            ..strokeWidth = isPatternEdge ? 2.5 : 1.5;
+            ..color = isPatternEdge
+                ? AppColors.targetAmber
+                : isEvidenceEdge
+                    ? AppColors.primary
+                    : AppColors.border
+            ..strokeWidth = isPatternEdge || isEvidenceEdge ? 2.5 : 1.5;
 
+          // Keep the edge endpoints at the node centers and use a modest
+          // quadratic bend only when parallel/reverse edges need separation.
+          // The old implementation offset both endpoints and the control point
+          // by the full amount, which made some edges excessively curved.
+          final bend = offset * 0.55;
+          final control = Offset(
+            (from.dx + to.dx) / 2 + normal.dx * bend,
+            (from.dy + to.dy) / 2 + normal.dy * bend,
+          );
           final path = Path()
-            ..moveTo(curveFrom.dx, curveFrom.dy)
+            ..moveTo(from.dx, from.dy)
             ..quadraticBezierTo(
-              (curveFrom.dx + curveTo.dx) / 2 + normal.dx * offset,
-              (curveFrom.dy + curveTo.dy) / 2 + normal.dy * offset,
-              curveTo.dx,
-              curveTo.dy,
+              control.dx,
+              control.dy,
+              to.dx,
+              to.dy,
             );
           canvas.drawPath(path, linePaint);
 
-          final arrowTip = curveTo - unit * 30;
-          _drawArrowhead(canvas, arrowTip - unit * 18, arrowTip, linePaint.color);
+          final tangent = to - control;
+          final tangentLength = tangent.distance;
+          if (tangentLength == 0) continue;
+          final tangentUnit = tangent / tangentLength;
+          final arrowTip = to - tangentUnit * 30;
+          _drawArrowhead(
+            canvas,
+            arrowTip - tangentUnit * 18,
+            arrowTip,
+            linePaint.color,
+          );
 
           final midpoint = Offset(
-            (curveFrom.dx + curveTo.dx) / 2 + normal.dx * offset,
-            (curveFrom.dy + curveTo.dy) / 2 + normal.dy * offset,
+            0.25 * from.dx + 0.5 * control.dx + 0.25 * to.dx,
+            0.25 * from.dy + 0.5 * control.dy + 0.25 * to.dy,
           );
           final textPainter = TextPainter(
             text: TextSpan(
               text: edgeLabel(edge),
               style: TextStyle(
                 fontSize: 9,
-                color: isPatternEdge ? AppColors.targetAmber : AppColors.textSecondary,
+                color: isPatternEdge
+                    ? AppColors.targetAmber
+                    : isEvidenceEdge
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
                 backgroundColor: AppColors.background,
               ),
             ),
@@ -558,6 +824,7 @@ class EdgePainter extends CustomPainter {
   bool shouldRepaint(covariant EdgePainter oldDelegate) {
     return oldDelegate.edges != edges ||
         oldDelegate.positions != positions ||
-        oldDelegate.patternTxHashes != patternTxHashes;
+        oldDelegate.patternTxHashes != patternTxHashes ||
+        oldDelegate.evidenceTxHashes != evidenceTxHashes;
   }
 }

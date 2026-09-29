@@ -364,7 +364,13 @@ class AttributionSummary {
       riskScore: json['risk_score'] as int? ?? 0,
       dataSource: json['data_source'] as String? ?? 'mock',
       path: (json['path'] as List<dynamic>? ?? []).map((e) => e as String).toList(),
-      scoringNotes: (json['scoring_notes'] as List<dynamic>? ?? []).map((e) => e as String).toList(),
+      vaspDirection: json['vasp_direction'] as String?,
+      pathHops: (json['path_hops'] as List<dynamic>? ?? const [])
+          .map((e) => PathHop.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      scoringNotes: (json['scoring_notes'] as List<dynamic>? ?? const [])
+          .map((e) => e.toString())
+          .toList(),
       confidenceBreakdown: json['confidence_breakdown'] is Map<String, dynamic>
           ? ScoreBreakdown.fromJson(json['confidence_breakdown'] as Map<String, dynamic>)
           : null,

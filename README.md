@@ -1,240 +1,339 @@
 # CryptoTrace — VASP Attribution Portal
 
-> **Blockchain investigation and evidence platform for Ethereum wallet tracing**
+![Flutter](https://img.shields.io/badge/Frontend-Flutter-02569B?logo=flutter&logoColor=white)
+![Python](https://img.shields.io/badge/Backend-Python-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white)
+![Ethereum](https://img.shields.io/badge/Blockchain-Ethereum-3C3C3D?logo=ethereum&logoColor=white)
+![Tests](https://img.shields.io/badge/Backend%20tests-34%20passed-success)
+![Flutter Tests](https://img.shields.io/badge/Frontend%20tests-8%20passed-success)
 
-CryptoTrace is a cybersecurity / blockchain-forensics prototype that traces Ethereum wallet transaction paths, identifies the nearest known VASP (Virtual Asset Service Provider), explains the heuristic attribution score, detects graph-derived investigation patterns, and packages the resulting evidence into a forensic PDF and machine-readable Case JSON.
+## Overview
 
-The project is designed around **traceability, explainability, and evidence preservation** rather than automatic accusations or identity claims.
+**CryptoTrace** is an evidence-oriented Ethereum transaction investigation prototype for **automated, explainable VASP attribution**.
+
+Given an Ethereum wallet and a configurable trace depth, CryptoTrace:
+
+1. collects and filters transaction candidates,
+2. builds a bounded transaction graph,
+3. identifies the nearest known/demo VASP,
+4. explains the heuristic confidence and risk scores,
+5. detects graph-derived investigation patterns,
+6. exposes transaction-level evidence and direction,
+7. creates a reproducible case snapshot,
+8. exports a forensic PDF and machine-readable Case JSON.
+
+The project was built for **Smart India Hackathon (SIH) 2026**, under the Blockchain & Cybersecurity theme.
+
+> **Important:** CryptoTrace is an investigation aid, not an identity-verification or criminality-verdict system. Graph proximity does not prove wallet ownership, VASP control, identity, or illicit activity.
 
 ---
 
-## ✨ What CryptoTrace Does
+## Why CryptoTrace?
+
+Traditional wallet investigation can require manually moving between blockchain explorers, transaction histories, graph relationships, and entity information.
+
+CryptoTrace combines that workflow into one interface:
 
 ```text
-Ethereum Wallet
-      ↓
-Transaction Collection
-      ↓
-Filtering + Classification
-      ↓
+Wallet
+  ↓
 Transaction Graph
-      ↓
-Path / VASP Attribution
-      ↓
-Confidence + Risk Explanation
-      ↓
-Investigation Pattern Detection
-      ↓
-Evidence + Case Snapshot
-      ↓
-PDF Report / Case JSON
+  ↓
+VASP Candidate
+  ↓
+Evidence
+  ↓
+Explainable Scores
+  ↓
+Investigation Patterns
+  ↓
+Case Package
 ```
 
-### Core capabilities
-
-- Ethereum wallet address validation
-- Configurable tracing depth: **1–3 hops**
-- Minimum native ETH transfer threshold: **0.0005 ETH**
-- Ethereum mainnet transaction ingestion through Etherscan
-- Normal ETH transactions
-- Internal ETH transactions
-- ERC-20 transfers represented structurally in the graph without token price conversion
-- Contract interaction handling
-- Candidate filtering and per-wallet limits
-- Directed **NetworkX MultiDiGraph** transaction model
-- Deterministic mock/demo mode
-- VASP registry matching and provenance
-- Direction-aware VASP path information
-- Transparent confidence and risk scoring breakdown
-- Graph-derived investigation indicators
-- Transaction-level evidence and Etherscan links for live transactions
-- Case IDs and in-memory case snapshots
-- Forensic PDF reports
-- Machine-readable Case JSON export
-- Interactive Flutter transaction graph
-- Pattern highlighting and transaction-path timeline
-- Configurable frontend API URL
-- Basic API rate limiting and short-TTL trace caching
+The emphasis is on **evidence + explainability**, not an opaque verdict.
 
 ---
 
-## 🧭 Forensic Positioning
+## Key Features
 
-CryptoTrace is an **investigation aid**, not an automated identity or criminality verdict engine.
+### Ethereum tracing
+- Ethereum mainnet
+- configurable 1–3 hop trace
+- minimum native ETH threshold of 0.0005 ETH
+- normal ETH transfers
+- internal ETH transfers
+- ERC-20 structural tracing
+- contract interaction handling
+- bounded graph traversal
 
-A graph path to a known VASP does **not** prove:
+### VASP attribution
+- registry-based candidate matching
+- nearest-path attribution
+- observed path direction:
+  - outbound
+  - inbound
+  - mixed
+  - unknown
+- VASP provenance
+- source information
+- verification status
+- public source URL where available
 
-- wallet ownership
-- wallet control
-- user identity
-- VASP ownership/control of the wallet
-- criminal intent
-- money laundering or other illegal activity
+### Explainability
+- heuristic confidence score
+- heuristic risk score
+- factor-by-factor score breakdown
+- trace analysis counters
+- transparent data-source status
 
-Likewise, detected patterns such as fan-in, fan-out, rapid forwarding, repeated routing, or near-threshold clustering are **indicators for investigation**, not proof of wrongdoing.
+### Investigation patterns
+- fan-out
+- fan-in
+- rapid forwarding
+- long routing chain
+- repeated routing
+- near-threshold transfer clustering
 
-This distinction is intentionally reflected in the API models, frontend wording, scoring explanations, and exported evidence reports.
+These are **indicators for further investigation**, not proof of wrongdoing.
+
+### Transaction evidence
+- transaction hash
+- amount
+- asset
+- timestamp
+- block number
+- transaction type
+- token metadata
+- live explorer links
+- exact transaction hashes for selected attribution-path hops
+
+### Case package
+- Case ID
+- case snapshot
+- forensic PDF
+- Case JSON
+- VASP provenance
+- transaction evidence
+- scoring breakdown
+- investigation patterns
+- disclaimers
+
+### Investigation workspace
+- graph search
+- asset filter
+- direction filter
+- pattern-only mode
+- evidence mode
+- path highlighting
+- reset filters
+- collapse/expand Attribution & Evidence on wide layouts
+
+### Reliability
+- deterministic demo/mock mode
+- short-TTL trace caching
+- API rate protection
+- structured API error handling
+- loading/retry UX
+- frontend automated tests
+- backend automated tests
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
-CryptoTrace is split into modular backend and frontend components.
+```text
+                     ┌───────────────────────────┐
+                     │       Flutter UI          │
+                     │                           │
+                     │ Wallet Input              │
+                     │ Graph + Controls          │
+                     │ Attribution               │
+                     │ Evidence                  │
+                     │ Case Export               │
+                     └────────────┬──────────────┘
+                                  │ HTTP
+                                  ▼
+                     ┌───────────────────────────┐
+                     │        FastAPI API        │
+                     └────────────┬──────────────┘
+                                  │
+               ┌──────────────────┼──────────────────┐
+               ▼                  ▼                  ▼
+        Etherscan API          Mock Data       Case Services
+               │                  │                  │
+               └──────────────────┼──────────────────┘
+                                  ▼
+                     ┌───────────────────────────┐
+                     │ Parse / Filter / Classify │
+                     └────────────┬──────────────┘
+                                  ▼
+                     ┌───────────────────────────┐
+                     │ NetworkX Transaction Graph│
+                     └────────────┬──────────────┘
+                                  ▼
+               ┌──────────────────┼──────────────────┐
+               ▼                  ▼                  ▼
+          Attribution          Scoring          Patterns
+               │                  │                  │
+               └──────────────────┼──────────────────┘
+                                  ▼
+                     ┌───────────────────────────┐
+                     │ Response / Case Evidence │
+                     │ PDF / JSON                │
+                     └───────────────────────────┘
+```
+
+---
+
+## Repository Structure
+
+```text
+CryptoTrace/
+├── backend/
+│   ├── main.py
+│   ├── requirements.txt
+│   ├── .env.example
+│   ├── .gitignore
+│   ├── cryptotrace/
+│   │   ├── config.py
+│   │   ├── registry.py
+│   │   ├── models.py
+│   │   ├── utils.py
+│   │   ├── ingestion/
+│   │   │   ├── etherscan.py
+│   │   │   └── mock.py
+│   │   ├── graph/
+│   │   │   ├── tracer.py
+│   │   │   ├── attribution.py
+│   │   │   ├── scoring.py
+│   │   │   └── patterns.py
+│   │   ├── services/
+│   │   │   ├── response.py
+│   │   │   ├── case_store.py
+│   │   │   ├── trace_cache.py
+│   │   │   └── rate_limit.py
+│   │   ├── reporting/
+│   │   │   └── pdf.py
+│   │   └── api/
+│   │       ├── app.py
+│   │       └── routes.py
+│   └── tests/
+│
+├── frontend/
+│   ├── lib/
+│   │   ├── main.dart
+│   │   ├── app.dart
+│   │   ├── models/
+│   │   ├── services/
+│   │   ├── screens/
+│   │   ├── theme/
+│   │   ├── utils/
+│   │   └── widgets/
+│   │       ├── graph/
+│   │       ├── attribution/
+│   │       └── evidence/
+│   └── test/
+│
+├── README.md
+└── PROJECT_CONTEXT.md
+```
+
+---
+
+## Backend Technology
+
+- Python
+- FastAPI
+- Pydantic
+- NetworkX
+- httpx
+- python-dotenv
+- ReportLab
+- Etherscan API
+
+## Frontend Technology
+
+- Flutter
+- Dart
+- Material 3
+- StatefulWidget + setState
+- http
+- url_launcher
+
+---
+
+## Configuration
 
 ### Backend
 
+Use an environment file based on:
+
 ```text
-backend/
-├── main.py
-├── cryptotrace/
-│   ├── config.py
-│   ├── registry.py
-│   ├── models.py
-│   ├── utils.py
-│   ├── ingestion/
-│   │   ├── etherscan.py
-│   │   └── mock.py
-│   ├── graph/
-│   │   ├── tracer.py
-│   │   ├── attribution.py
-│   │   ├── scoring.py
-│   │   └── patterns.py
-│   ├── services/
-│   │   ├── response.py
-│   │   ├── case_store.py
-│   │   ├── trace_cache.py
-│   │   └── rate_limit.py
-│   ├── reporting/
-│   │   └── pdf.py
-│   └── api/
-│       ├── app.py
-│       └── routes.py
-└── tests/
+backend/.env.example
 ```
+
+Never commit real secrets.
+
+The Etherscan API key belongs only in the backend environment.
 
 ### Frontend
 
+Default development backend:
+
 ```text
-frontend/
-├── lib/
-│   ├── main.dart
-│   ├── app.dart
-│   ├── models/
-│   ├── services/
-│   ├── screens/
-│   ├── theme/
-│   ├── utils/
-│   └── widgets/
-│       ├── attribution/
-│       ├── evidence/
-│       └── graph/
-└── test/
+http://localhost:8000
 ```
 
-The modular split is intentional: ingestion, graph analysis, scoring, pattern detection, reporting, and HTTP orchestration have separate responsibilities rather than being placed in one large backend file. The Flutter application is similarly split into models, services, screens, and reusable widgets.
+A different backend can be supplied at runtime:
+
+```powershell
+flutter run --dart-define=API_BASE_URL=http://192.168.1.20:8000
+```
 
 ---
 
-## 🔍 Investigation Workflow
+## Running the Backend
 
-1. Enter an Ethereum wallet address.
-2. Select a trace depth from 1 to 3 hops.
-3. CryptoTrace collects transaction candidates from Etherscan or deterministic mock data.
-4. Candidates are classified, filtered, deduplicated, and prioritized.
-5. Eligible transfers are added to a directed MultiDiGraph.
-6. The graph is traversed within the configured hop limit.
-7. The nearest registry VASP is identified and the observed path direction is reported as inbound, outbound, mixed, or unknown.
-8. Confidence and risk are calculated using deterministic heuristic factors.
-9. Graph-derived investigation indicators are detected.
-10. Transaction-level evidence is attached to graph edges and selected path hops.
-11. A case snapshot is created.
-12. The user can export a forensic PDF or machine-readable Case JSON.
+From `backend/`:
 
----
+```powershell
+python main.py
+```
 
-## 📊 Scoring
-
-CryptoTrace uses a deterministic heuristic scoring model. The current implementation exposes its factors rather than presenting an unexplained percentage.
-
-### Confidence factors
-
-- hop distance
-- direct edge context
-- intermediary wallets
-- VASP verification status
-- mock/demo data penalty
-- live API failure penalty
-
-### Risk factors
-
-- base heuristic risk
-- intermediary wallets
-- graph sparsity
-- fragmented routing
-
-The frontend and PDF expose the factor breakdown so the displayed score can be audited against the underlying arithmetic.
-
-> These scores are heuristic indicators, not calibrated probabilities or legal determinations.
-
----
-
-## 🧩 Investigation Patterns
-
-The graph analysis can identify:
-
-| Pattern | Meaning in CryptoTrace |
-|---|---|
-| **Fan-out** | One wallet sends to multiple downstream counterparties |
-| **Fan-in** | Multiple upstream wallets send to one wallet |
-| **Rapid forwarding** | An incoming transfer is followed by an outgoing transfer within a short time window |
-| **Long routing chain** | The selected path reaches at least three hops |
-| **Repeated routing** | An intermediary on the selected path has multiple inbound and outbound edges |
-| **Near-threshold clustering** | Multiple transfers occur close to the configured tracing threshold in a short window |
-
-All pattern descriptions are intentionally non-dispositive.
-
----
-
-## 🧾 Evidence & Case Package
-
-Each trace can produce a case snapshot containing:
-
-- Case ID and creation timestamp
-- Trace configuration
-- Target wallet
-- Graph nodes and edges
-- Selected VASP path
-- Observed VASP path direction
-- VASP provenance
-- Transaction evidence
-- Confidence breakdown
-- Risk breakdown
-- Investigation patterns
-- Trace filtering/accounting information
-- Disclaimer and data-source information
-
-### Export formats
-
-**PDF** — human-readable forensic/evidence report.
-
-**Case JSON** — machine-readable snapshot intended for reproducibility, downstream analysis, and integration with other systems.
-
-Case exports use the stored case snapshot when a valid Case ID is supplied. A missing/expired Case ID is rejected rather than silently replaced with a new trace.
-
----
-
-## 🌐 API
-
-The current API includes:
+Health endpoint:
 
 ```text
-GET  /api/health
+GET http://localhost:8000/api/health
+```
+
+---
+
+## Running the Frontend
+
+From `frontend/`:
+
+```powershell
+flutter pub get
+flutter run
+```
+
+---
+
+## API
+
+### Health
+
+```text
+GET /api/health
+```
+
+### Trace
+
+```text
 POST /api/trace
-GET  /api/report/{wallet}
-GET  /api/case/{wallet}
 ```
 
-### Trace request
+Example:
 
 ```json
 {
@@ -243,197 +342,338 @@ GET  /api/case/{wallet}
 }
 ```
 
-The trace response contains the graph, attribution summary, analysis information, scoring breakdowns, detected patterns, provenance, and case metadata.
-
----
-
-## ⚙️ Configuration
-
-Backend configuration is environment-driven.
-
-Copy the example file:
-
-```powershell
-copy backend\.env.example backend\.env
-```
-
-At minimum, configure the Etherscan API key for live blockchain ingestion:
-
-```env
-ETHERSCAN_API_KEY=YOUR_API_KEY_HERE
-```
-
-Do **not** commit the real `.env` file or any API secrets.
-
-The backend also supports configuration for trace limits, rate limiting, and trace-cache TTL.
-
-### Frontend API URL
-
-The default frontend backend URL is:
+### Forensic PDF
 
 ```text
-http://localhost:8000
+GET /api/report/{wallet}
 ```
 
-For another machine or deployment target:
+Optional case ID may be supplied so the exact stored case snapshot is exported.
 
-```powershell
-flutter run --dart-define=API_BASE_URL=http://192.168.1.20:8000
+### Case JSON
+
+```text
+GET /api/case/{wallet}
 ```
+
+Optional case ID may be supplied.
 
 ---
 
-## 🚀 Running Locally
+## Graph Investigation Controls
+
+The top graph toolbar currently supports:
+
+### Search
+
+Search for wallet/address or transaction information and emphasize matching graph content.
+
+### Asset
+
+```text
+All
+ETH
+ERC-20
+Contract
+```
+
+### Direction
+
+```text
+All
+Outgoing from target
+Incoming to target
+```
+
+### Patterns only
+
+Focus on graph elements associated with detected investigation patterns.
+
+### Evidence mode
+
+Focus on the selected attribution path and its supporting transaction evidence.
+
+### Reset
+
+Restore all graph filters and modes.
+
+### Collapse Attribution & Evidence
+
+On wide desktop layouts, the right-side evidence panel can be hidden so the graph takes over the workspace.
+
+---
+
+## Graph Visualization
+
+The graph supports:
+
+- zoom and pan
+- directed arrows
+- multiple transactions between the same wallets
+- opposite-direction edge separation
+- transaction labels
+- pattern highlighting
+- evidence-path highlighting
+- node details
+- safe node placement without boundary clipping
+
+---
+
+## Mock / Demo Mode
+
+CryptoTrace includes deterministic demo data.
+
+The mock is intentionally designed for demonstrations and testing without a live Etherscan key.
+
+It is designed to support:
+- meaningful 1-hop traces
+- meaningful 2-hop traces
+- meaningful 3-hop traces
+- VASP reachability at the requested depth
+- investigation-pattern examples
+- below-threshold filtering behavior
+
+> Mock data is demonstration data only. It is not real blockchain intelligence.
+
+---
+
+## Live Ethereum Mode
+
+Live mode uses Etherscan Ethereum mainnet data.
+
+The implementation includes:
+- bounded API calls
+- timeouts
+- candidate limits
+- graph-node limits
+- partial-data handling
+- rate protection
+- live failure reporting
+
+Explorer links are provided for live transaction hashes.
+
+---
+
+## VASP Provenance
+
+Registry records can include:
+- VASP name
+- VASP type
+- address
+- source
+- source type
+- source URL
+- verification status
+- last verified
+- notes
+
+Demo registry records are intentionally labeled as demo/unverified.
+
+A registry match is not proof of ownership or control.
+
+---
+
+## Scoring
+
+CryptoTrace uses deterministic heuristic scores.
+
+### Confidence
+
+Considers:
+- hop distance
+- direct-path relationship
+- intermediary wallets
+- verification state
+- demo/mock data
+- live API failure
+
+### Risk
+
+Considers:
+- base risk
+- intermediary wallets
+- graph sparsity
+- fragmented routing
+
+The UI exposes the factors used to derive the final numbers.
+
+These are heuristic scores, not statistical probabilities.
+
+---
+
+## Investigation Patterns
+
+CryptoTrace can detect:
+
+| Pattern | Meaning |
+|---|---|
+| Fan-out | One wallet sends to multiple downstream counterparties |
+| Fan-in | Multiple upstream wallets send into one wallet |
+| Rapid forwarding | Incoming value is followed by outgoing movement within a short window |
+| Long route | Attribution path reaches a longer hop depth |
+| Repeated routing | Intermediary shows repeated inbound/outbound relationships |
+| Near-threshold cluster | Multiple transfers appear near the configured threshold in a time window |
+
+These patterns are **investigation indicators only**.
+
+They do not prove:
+- criminal intent
+- money laundering
+- illegal activity
+- ownership
+- VASP control
+
+---
+
+## Evidence and Case Workflow
+
+```text
+Trace
+  ↓
+Case ID
+  ↓
+Graph
+  ↓
+Attribution
+  ↓
+Provenance
+  ↓
+Transaction Evidence
+  ↓
+Score Explanation
+  ↓
+Pattern Indicators
+  ↓
+PDF + Case JSON
+```
+
+Case snapshots are session-level prototype data unless persistent storage is added in the future.
+
+If an existing case ID is missing/expired, the backend does not silently create a replacement trace under the old ID.
+
+---
+
+## Testing
 
 ### Backend
 
-From the backend directory:
-
 ```powershell
-python -m venv venv
-venv\Scripts\activate
-python -m pip install -r requirements.txt
-python main.py
-```
-
-The development API runs on:
-
-```text
-http://localhost:8000
-```
-
-Health check:
-
-```text
-http://localhost:8000/api/health
-```
-
-### Frontend
-
-From the Flutter frontend directory:
-
-```powershell
-flutter pub get
-flutter analyze
-flutter run
-```
-
-Make sure the backend is running and the frontend API base URL points to it.
-
----
-
-## 🧪 Testing
-
-### Backend
-
-```powershell
+cd backend
 python -m pytest -q
 ```
 
-Current development baseline:
+Current baseline:
 
 ```text
 34 passed
 ```
 
+Current warnings are dependency deprecations, not test failures.
+
 ### Frontend
 
 ```powershell
+cd frontend
 flutter analyze
+flutter test
 ```
 
-Current development baseline:
+Current baseline:
 
 ```text
 No issues found!
+8 tests passed
 ```
 
-The backend may report dependency deprecation warnings from Pydantic, ReportLab, or Starlette/AnyIO. These warnings are not test failures.
+---
+
+## Current Feature Milestones
+
+```text
+Step 0  Architecture / modularization       ✅
+Step 1  VASP provenance                      ✅
+Step 2  Transaction evidence                 ✅
+Step 3  Confidence/risk explanation          ✅
+Step 4  Investigation patterns               ✅
+Step 5  Evidence + Case package              ✅
+P0      Demo hardening                       ✅
+P1      Forensic correctness                 ✅
+P2      Reliability/security hardening       ✅
+Step 6  Investigation controls               ✅
+Step 7  Frontend testing                     ✅
+Step 8  Loading/error UX                     ✅
+Step 9  Graph workspace improvements         ✅
+```
 
 ---
 
-## 🛡️ Security & Prototype Boundaries
+## Security Notes
 
-CryptoTrace is currently a local / hackathon-stage prototype.
+Before publishing:
 
-Important boundaries:
-
-- The API has no authentication/authorization layer.
-- External API usage is protected by application-level request limiting, but public production deployment would require stronger operational controls.
-- Case storage is in-memory and intended for prototype/session-level usage.
-- The application should not be exposed publicly with a production API key without reviewing authentication, authorization, secret management, persistence, monitoring, and deployment controls.
-- Live transaction data depends on the availability and limits of the upstream Etherscan API.
-
----
-
-## 🧪 Mock / Demo Mode
-
-CryptoTrace includes deterministic demo data so the application can be demonstrated without a live Etherscan key.
-
-The mock dataset is designed to exercise multiple investigation paths and pattern types while remaining reproducible.
-
-**Mock data is not real blockchain intelligence.** It must never be presented as evidence about a real wallet or real entity.
+- never commit `.env`
+- never commit API keys
+- use `.env.example`
+- review CORS before public deployment
+- keep rate limits enabled
+- keep graph/API limits enabled
+- avoid exposing backend credentials to Flutter
 
 ---
 
-## 📌 Current Limits
+## Limitations
 
-Unless overridden through configuration, the current implementation is designed around:
+CryptoTrace is a hackathon-stage prototype.
 
-- **Maximum trace depth:** 3 hops
-- **Minimum native ETH transfer threshold:** 0.0005 ETH
-- **Maximum graph nodes:** 100
-- **Maximum live API calls per trace:** 30
-- **Candidate and per-source transaction limits:** enforced by configuration
-
-The source code is authoritative if these values change.
-
----
-
-## 🧱 Development Principles
-
-CryptoTrace intentionally prioritizes:
-
-- explainability over opaque scoring
-- evidence over assertions
-- reproducible mock data
-- modular architecture
-- explicit data-quality states
-- transparent heuristic limitations
-- minimal dependencies
-- deterministic behavior where possible
-
-The project does **not** add AI/ML merely for presentation value. Future intelligent methods should be introduced only where they can be validated and explained.
+It is not currently:
+- multi-chain
+- authenticated multi-user case management
+- persistent enterprise evidence storage
+- a probabilistic identity-attribution engine
+- a substitute for regulated compliance or forensic intelligence
 
 ---
 
-## 🔮 Planned / Future Work
+## Responsible Interpretation
 
-Potential future work includes:
+Use wording such as:
 
-- investigation search and graph filters
-- Evidence Mode for focused case review
-- frontend automated tests
-- deeper ASGI/integration coverage
-- persistent case storage
-- stronger caching and operational controls
-- broader token/asset handling
-- multi-chain tracing
-- richer verified VASP intelligence feeds
-- entity clustering and advanced anomaly analysis
+> "The wallet is graphically connected to a known/demo VASP within N hops."
 
-These are future directions, not claims about the current implementation.
+> "The observed direction is outbound/inbound/mixed."
 
----
+> "The graph contains a fan-out pattern."
 
-## 👥 Project Context
+Avoid stating:
 
-CryptoTrace was developed as a cybersecurity / blockchain investigation project for a hackathon setting. The current codebase is intended to be understandable, testable, and demonstrable rather than production-scale infrastructure.
+> "This wallet belongs to the exchange."
+
+> "This wallet is definitely illicit."
+
+> "This proves money laundering."
 
 ---
 
-## ⚠️ Disclaimer
+## Project Status
 
-CryptoTrace provides heuristic blockchain-analysis results for investigative assistance and education. A graph relationship, VASP proximity, confidence score, risk score, or detected graph pattern is not proof of ownership, control, identity, criminal conduct, or illicit intent.
+CryptoTrace is considered **feature-complete for the SIH final-round prototype**.
 
-Investigators should independently verify conclusions using authoritative blockchain data, entity intelligence, legal/process context, and other evidence.
+The current focus is:
+- final integration verification
+- demo rehearsal
+- presentation
+- screenshots/documentation
+- GitHub cleanup
+- optional future hardening
+
+---
+
+## License / Open Source
+
+The project is built around open-source technologies and public blockchain data sources. Add the final project-specific license and repository links here when publishing.
+
+---
+
+## Responsible Use
+
+CryptoTrace should be used as an investigative aid with human review. Any real-world attribution or compliance decision should be independently verified using authoritative intelligence and appropriate legal/compliance processes.

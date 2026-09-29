@@ -7,8 +7,10 @@ class InputPanel extends StatelessWidget {
   final int hopDepth;
   final bool isLoading;
   final String? errorMessage;
+  final bool errorRetryable;
   final ValueChanged<int> onHopDepthChanged;
   final VoidCallback onTrace;
+  final VoidCallback onRetry;
 
   const InputPanel({
     super.key,
@@ -16,8 +18,10 @@ class InputPanel extends StatelessWidget {
     required this.hopDepth,
     required this.isLoading,
     required this.errorMessage,
+    required this.errorRetryable,
     required this.onHopDepthChanged,
     required this.onTrace,
+    required this.onRetry,
   });
 
   @override
@@ -117,10 +121,18 @@ class InputPanel extends StatelessWidget {
                 elevation: 0,
               ),
               child: isLoading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  ? const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        ),
+                        SizedBox(width: 10),
+                        Text('Tracing...', style: TextStyle(fontWeight: FontWeight.w600)),
+                      ],
                     )
                   : const Text('Trace Wallet', style: TextStyle(fontWeight: FontWeight.w600)),
             ),
@@ -140,9 +152,28 @@ class InputPanel extends StatelessWidget {
                   const Icon(Icons.error_outline, size: 16, color: AppColors.danger),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      errorMessage!,
-                      style: const TextStyle(color: AppColors.danger, fontSize: 12.5),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          errorMessage!,
+                          style: const TextStyle(color: AppColors.danger, fontSize: 12.5, height: 1.35),
+                        ),
+                        if (errorRetryable) ...[
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: isLoading ? null : onRetry,
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.danger,
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: const Icon(Icons.refresh, size: 15),
+                            label: const Text('Retry'),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ],

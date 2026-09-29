@@ -22,11 +22,13 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
   int _hopDepth = 2;
   bool _isLoading = false;
   String? _errorMessage;
+  bool _errorRetryable = false;
   TraceResult? _result;
   String? _selectedNodeId;
   bool _backendOnline = false;
   bool _isExportingPdf = false;
   bool _isExportingCaseJson = false;
+  bool _showEvidencePanel = true;
   Timer? _healthTimer;
 
   static final RegExp _addressPattern = RegExp(r'^0x[a-fA-F0-9]{40}$');
@@ -35,15 +37,13 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
   void initState() {
     super.initState();
     _pollHealth();
-    // Re-check periodically so a backend restart, a dropped connection, or a
-    // transient CORS/network hiccup self-corrects without requiring the user
-    // to reload the whole app.
     _healthTimer = Timer.periodic(const Duration(seconds: 8), (_) => _pollHealth());
   }
 
   Future<void> _pollHealth() async {
     final online = await ApiClient.checkHealth();
-    if (mounted) setState(() => _backendOnline = online);
+    if (!mounted) return;
+    setState(() => _backendOnline = online);
   }
 
   String? _validateAddress(String value) {
@@ -56,11 +56,14 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
   }
 
   Future<void> _runTrace() async {
-    final validationError = _validateAddress(_addressController.text);
+    final wallet = _addressController.text.trim().toLowerCase();
+    final validationError = _validateAddress(wallet);
     if (validationError != null) {
       setState(() {
         _errorMessage = validationError;
+        _errorRetryable = false;
         _result = null;
+        _selectedNodeId = null;
       });
       return;
     }
@@ -68,31 +71,46 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _errorRetryable = false;
+      // Clear the previous result while a new trace is running so stale
+      // evidence cannot be mistaken for the in-progress request.
+      _result = null;
       _selectedNodeId = null;
     });
 
     try {
-      final result = await ApiClient.traceWallet(_addressController.text.trim().toLowerCase(), _hopDepth);
+      final result = await ApiClient.traceWallet(wallet, _hopDepth);
+      if (!mounted) return;
       setState(() {
         _result = result;
         _isLoading = false;
+        _errorMessage = null;
+        _errorRetryable = false;
         _selectedNodeId = result.summary.targetWallet;
+        _backendOnline = true;
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _errorMessage = e.message;
+        _errorRetryable = e.retryable;
         _isLoading = false;
+        if (e.kind == ApiErrorKind.network || e.kind == ApiErrorKind.timeout) {
+          _backendOnline = false;
+        }
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = 'An unexpected error occurred while tracing the wallet.';
+        _errorMessage = 'An unexpected error occurred while tracing the wallet. Please retry.';
+        _errorRetryable = true;
         _isLoading = false;
       });
     }
   }
 
   Future<void> _exportPdf() async {
-    if (_result == null) return;
+    if (_result == null || _isExportingPdf || _isExportingCaseJson) return;
     setState(() => _isExportingPdf = true);
 
     final uri = ApiClient.reportUri(
@@ -102,13 +120,11 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
     );
     try {
       final launched = await launchUrl(uri, webOnlyWindowName: '_blank');
-      if (!launched) {
-        throw Exception('launch failed');
-      }
+      if (!launched) throw Exception('launch failed');
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not generate or open the evidence PDF. Please try again.')),
+          const SnackBar(content: Text('Could not open the evidence PDF. Check the backend and try again.')),
         );
       }
     } finally {
@@ -117,7 +133,7 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
   }
 
   Future<void> _exportCaseJson() async {
-    if (_result == null) return;
+    if (_result == null || _isExportingPdf || _isExportingCaseJson) return;
     setState(() => _isExportingCaseJson = true);
 
     final uri = ApiClient.caseJsonUri(
@@ -127,13 +143,11 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
     );
     try {
       final launched = await launchUrl(uri, webOnlyWindowName: '_blank');
-      if (!launched) {
-        throw Exception('launch failed');
-      }
+      if (!launched) throw Exception('launch failed');
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not generate or open the case JSON. Please try again.')),
+          const SnackBar(content: Text('Could not open the case JSON. Check the backend and try again.')),
         );
       }
     } finally {
@@ -171,8 +185,10 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
                             hopDepth: _hopDepth,
                             isLoading: _isLoading,
                             errorMessage: _errorMessage,
+                            errorRetryable: _errorRetryable,
                             onHopDepthChanged: (v) => setState(() => _hopDepth = v),
                             onTrace: _runTrace,
+                            onRetry: _runTrace,
                           ),
                         ),
                         const VerticalDivider(width: 1),
@@ -182,23 +198,27 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
                             isLoading: _isLoading,
                             selectedNodeId: _selectedNodeId,
                             onNodeSelected: (id) => setState(() => _selectedNodeId = id),
+                            onToggleEvidencePanel: () => setState(() => _showEvidencePanel = !_showEvidencePanel),
+                            evidencePanelVisible: _showEvidencePanel,
                           ),
                         ),
-                        const VerticalDivider(width: 1),
-                        SizedBox(
-                          width: 340,
-                          child: AttributionPanel(
-                            result: _result,
-                            isExportingPdf: _isExportingPdf,
-                            isExportingCaseJson: _isExportingCaseJson,
-                            onExportPdf: _exportPdf,
-                            onExportCaseJson: _exportCaseJson,
+                        if (_showEvidencePanel) ...[
+                          const VerticalDivider(width: 1),
+                          SizedBox(
+                            width: 340,
+                            child: AttributionPanel(
+                              result: _result,
+                              isExportingPdf: _isExportingPdf,
+                              isExportingCaseJson: _isExportingCaseJson,
+                              onExportPdf: _exportPdf,
+                              onExportCaseJson: _exportCaseJson,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     );
                   }
-                  // Narrow / mobile layout: stack panels vertically.
+
                   return SingleChildScrollView(
                     child: Column(
                       children: [
@@ -207,8 +227,10 @@ class _CryptoTraceHomePageState extends State<CryptoTraceHomePage> {
                           hopDepth: _hopDepth,
                           isLoading: _isLoading,
                           errorMessage: _errorMessage,
+                          errorRetryable: _errorRetryable,
                           onHopDepthChanged: (v) => setState(() => _hopDepth = v),
                           onTrace: _runTrace,
+                          onRetry: _runTrace,
                         ),
                         SizedBox(
                           height: 420,
