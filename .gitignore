@@ -21,3 +21,6 @@ build/
 # OS Junk
 .DS_Store
 Thumbs.db
+
+# Firebase
+.firebase/
